@@ -6,6 +6,149 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This pr
 
 ---
 
+## [3.31.1] - 2026-08-17
+
+### Fixed — all five open community issues, each verified by reproduction first
+
+- **#10 `claim-verifier.py`: percent regex matched only when a word character
+  followed "%".** `%\b` requires a word char AFTER the non-word "%" — so
+  "98%x" was a claim while "98% of customers", "98%." and end-of-line
+  percentages extracted nothing. Fixed with `%(?!\w)`; new
+  `tests/test_claim_verifier.py` (7 tests) pins the corrected behavior through
+  the real CLI, including that "98%x" is now correctly NOT a claim.
+- **#11 `keyword_cluster.py`: `[a-z0-9]+` tokenizer split every non-ASCII
+  letter; German compounds scored 0.00.** "bürohaftpflicht" tokenized as
+  "rohaftpflicht"; Jaccard("betriebshaftpflichtversicherung",
+  "betriebshaftpflicht") = 0.00, leaving the cannibalisation gate and internal
+  link map blind in compounding languages. Fixed: Unicode tokenizer
+  (`[^\W_]+`) + `_lexical_similarity` with compound-aware containment matching
+  (6-char floor) used at the three lexical call sites; SERP-URL overlap keeps
+  pure `_jaccard`. New `tests/test_keyword_cluster.py` (9 tests) includes an
+  English-parity bound and proof that English sets without containment pairs
+  score exactly as before.
+- **#13 `engagement-workflow`: `allowed-tools` lacked `Task` while the body
+  mandates Task dispatch in Parts 2/9/10/11 and the parallel-dispatch rules.**
+  `Task` added to the declaration. New `TestSkillToolDeclarations` guard fails
+  any skill whose body references Task dispatch without declaring it
+  (detection regex plant-checked against the real phrasing). A sweep confirmed
+  engagement-workflow was the only offender.
+- **#12 `plugin.yaml` said "158 skills" against 163 shipped.** The Hermes
+  manifest was the one description outside the count guards. Fixed to 163;
+  the auto-register comment and two test-message literals made count-free;
+  new guard pins the plugin.yaml description to the derived skill count.
+- **#9 `hooks/hooks.json` carried a `_readme` field that Cowork plugin
+  validation rejects.** The rationale text moved to `hooks/README.md`;
+  hooks.json is now exactly `{"hooks": {}}`. The same defect existed in
+  ContentForge and SocialForge — fixed and guarded in all three repos
+  (`TestHooksManifestSchemaClean`).
+
+Reported by @jurazerr (#10, #11, #12, #13) and @theepicsaxguy (#9) — thank you
+for precise, reproducible reports. Tests: 381 → 402.
+
+---
+
+## [3.31.0] - 2026-08-17
+
+### Added — Grok (xAI Build CLI) native support
+
+- New `.grok-plugin/plugin.json` (mirrors the Claude manifest + the
+  `"skills": "./skills/"` pointer Grok's loader uses) and
+  `.grok-plugin/marketplace.json` (single-plugin marketplace source), so
+  `grok plugin install indranilbanerjee/digital-marketing-pro` works directly.
+  Grok also reads the Claude Code manifests for compatibility
+  ([Grok Build docs](https://docs.x.ai/build/features/skills-plugins-marketplaces));
+  the native pair is the first-class lane.
+- Both files version-locked in `tests/test_release_consistency.py`
+  (`PLATFORM_MANIFESTS_JSON` grows to 8; a dedicated test pins the marketplace
+  entry's version and source URL). Grok added to the install-command guard,
+  the README troubleshooting platform-name guard, and the AGENTS.md surfaces
+  guard. Shared manifest description now lists Grok in the platform run.
+- README: platforms 8→9 native across the compare table, surfaces table
+  (new Grok row + install commands), troubleshooting (new Grok section),
+  FAQ, and the harnesses lede; AGENTS.md surfaces line updated.
+
+### Fixed — four stale counts that escaped the doc-count guard, and the guard taught to see them
+
+- "DMP's 158 `SKILL.md` files" (backticks broke the guard's adjacency match),
+  "all 158 marketing skills" and "All 158 DMP skill names" (qualifier words
+  between number and noun), and "All 209 tests" (tests was never a guarded
+  noun — 170 stale against the real 379). All four corrected to derived truth.
+- `tests/test_doc_counts.py`: `SKILL_MD_RE` now tolerates backticks, new
+  `QUALIFIED_SKILLS_RE` catches the qualifier phrasings, new `TESTS_RE` makes
+  "N tests" a guarded noun with ground truth derived from `def test_` counts.
+  Each new pattern plant-checked against the exact phrasing it previously
+  missed.
+
+Tests: 379 → 381.
+
+---
+
+## [3.30.2] - 2026-08-16
+
+### Fixed — the documentation truth pass
+
+A from-zero audit of every live document found the doc-count guard pattern-blind: it
+required a number directly before one of three nouns, and every stale count in the
+repo was phrased some other way.
+
+- **README** — the "How does this compare?" table said "Skills count **158**" (the repo
+  ships 163), "All 158 SKILL.md files" (163), and a "### 86 Python scripts" section
+  heading (93).
+- **AGENTS.md** — the file every non-Claude runtime auto-loads — pinned "Supported
+  surfaces (v3.17.0)", thirteen releases stale. It now carries the current version.
+- **docs/architecture.md** and **docs/claude-interfaces.md** quoted "86 Python scripts"
+  in five places and "The 158 SKILL.md files" — all now 93 and 163.
+- **TESTING-GUIDE.md**'s versioning checklist pinned v3.17.0 and "~86 scripts"; it is
+  now version-agnostic and points at the sources of truth instead of restating them.
+- **docs/distribution/submission-bundle.md** pinned a release version in its
+  release-notes section; made version-agnostic so it cannot rot.
+
+### Changed — the guard can now see what rotted
+
+`tests/test_doc_counts.py` grew the patterns the audit proved necessary: script counts
+(including "N Python scripts"), "N SKILL.md files", comparison-table "Skills count"
+rows, and AGENTS.md currency (version = manifest, all 8 surfaces named).
+Release-narrative sections keep their ship-time numbers via heading-aware exemptions,
+and each new pattern is plant-checked against the exact phrasing that previously
+escaped. Tests 376 → 379.
+
+## [3.30.1] - 2026-08-16
+
+### Changed — richer Agent Plugins 1.0 listing metadata + submission bundle
+
+The root `plugin.json` now carries the official schema's full optional set —
+`homepage`, `repository`, `license`, `keywords` — verified against the
+published schema at agent-plugins.org (closed schema, 10 permitted fields).
+Schema guards widened to the official field list. Added
+`docs/distribution/submission-bundle.md`: listing metadata, starter prompts,
+and the 5-positive + 3-negative test cases both official directories require —
+ready for the owner to submit.
+
+## [3.30.0] - 2026-08-16
+
+### Added — the content-engine run auditor
+
+`scripts/run-audit.py` re-derives a run's gate claims from its artifacts, using
+the plugin's own scripts. "status: ready" now requires the audit: the humanize
+verdict is re-measured with a fresh ai-tell-scan run rather than read off the
+scorecard; scan JSON embedded in the measured file (the corruption class that
+once flipped `may_claim_authored`) is a violation; the authorship record must
+match a fresh measurement; recorded voice distances must actually sit inside the
+0.15 gate a ready-declaration claims they do; publish-ready copy must be free of
+production placeholders. Missing inputs are reported-N/A, never silent-pass.
+12 new tests with plants for every guard.
+
+## [3.29.0] - 2026-08-16
+
+### Added — Agent Plugins 1.0 packaging
+
+- Root `plugin.json` on the closed AP1.0 schema (OpenAI standard, 2026-08-06;
+  ChatGPT, Codex, Cursor, GitHub Copilot, VS Code, Kiro), version-synced with
+  the Claude manifest and guarded by `tests/test_agent_plugins_manifest.py`.
+- `${PLUGIN_DATA}` (the standard's data-dir name) accepted wherever
+  `CLAUDE_PLUGIN_DATA` was read — a compliant non-Claude host previously
+  resolved no data directory at all.
+
 ## [3.28.0] - 2026-08-15
 
 A `brand-setup` → `content-engine` run on a fresh brand, following the instructions
